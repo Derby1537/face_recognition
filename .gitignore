@@ -2,5 +2,11 @@ archive/
 .env
 .DS_Store
 myvenv/
+
+**/.DS_Store
+**/._.DS_Store
+
 __pycache__/
-**/__pycache__/
+*.pyc
+*.pyo
+*.pyd
