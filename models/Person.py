@@ -1,7 +1,5 @@
+from . import Base
 from sqlalchemy import Column, Integer, LargeBinary, String
-from sqlalchemy.orm import declarative_base
-
-Base = declarative_base()
 
 class Person(Base):
     __tablename__ = "people"
