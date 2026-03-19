@@ -2,3 +2,5 @@ archive/
 .env
 .DS_Store
 myvenv/
+__pycache__/
+**/__pycache__/
