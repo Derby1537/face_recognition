@@ -1,19 +1,11 @@
-import pickle
-from typing import List, Optional, cast
+from typing import List, Optional
 
-import numpy as np
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
-from sqlalchemy import String, or_
-from sqlalchemy.orm import Session, selectinload
+from fastapi import APIRouter, Depends, File, UploadFile
+from sqlalchemy.orm import Session
 
-import face_recognition
-import FAISS.faiss_index as faiss_index
+from controllers import people_controller
 from db.db import get_db
-from models.Face_Encodings import FaceEncoding
-from models.Person import Person
-from models.Picture import Picture
 from schemas.person import PersonBase, PersonUpdate, PersonWithPictures
-from schemas.picture import PictureWithTolerance
 
 router = APIRouter()
 
@@ -25,150 +17,33 @@ async def getPeople(
     name: Optional[str] = None,
     db: Session = Depends(get_db)
 ):
-    query = db.query(Person)
+    return people_controller.getPeople(db, search, id, name)
 
-    if id is not None:
-        query = query.filter(Person.id == id)
-
-    if name:
-        query = query.filter(Person.name.ilike(f"%{name}%"))
-
-    if search:
-        query = query.filter(
-            or_(
-                Person.name.ilike(f"%{search}%"),
-                Person.id.cast(String).ilike(f"%{search}%"),
-            )
-        )
-
-    people = query.all()
-    return people
 
 @router.post("/sync_pictures")
 async def syncPictures(
-    id: int, 
-    tolerance: float = 0.5, 
+    id: int,
+    tolerance: float = 0.5,
     db: Session = Depends(get_db)
 ):
-    person = db.get(Person, id)
-    if not person:
-        raise HTTPException(status_code=404, detail="Person not found")
+    return people_controller.syncPictures(db, id, tolerance)
 
-    db.query(FaceEncoding).filter(FaceEncoding.person_id == id).update({FaceEncoding.person_id: None})
-    db.commit()
-    
-    person_encoding = pickle.loads(cast(bytes, person.encoding))
-
-    encodings = db.query(FaceEncoding).all()
-    updated = 0
-
-    for db_encoding in encodings:
-        encoding = pickle.loads(cast(bytes, db_encoding.encoding))
-        match = face_recognition.compare_faces([person_encoding], encoding, tolerance=tolerance)[0]
-
-        if match:
-            db_encoding.person_id = id
-            db_encoding.tolerance = tolerance
-            updated += 1
-
-    db.commit()
-
-    return {
-        "message": "Sync completed",
-        "updated_encodings": updated
-    }
 
 @router.get("/{id}", response_model=PersonWithPictures)
 async def getPerson(id: int, db: Session = Depends(get_db)):
-    person = db.get(Person, id)
-    if not person:
-        raise HTTPException(status_code=404, detail="Person not found")
+    return people_controller.getPerson(db, id)
 
-    encodings = (
-        db.query(FaceEncoding, Picture)
-        .join(Picture, FaceEncoding.picture_id == Picture.id)
-        .filter(FaceEncoding.person_id == id)
-        .all()
-    )
-
-    pictures = [
-        PictureWithTolerance(id=pic.id, path=pic.path, tolerance=enc.tolerance)
-        for enc, pic in encodings
-    ]
-
-    return PersonWithPictures(id=person.id, name=person.name, pictures=pictures)
 
 @router.put("/{id}", response_model=PersonBase)
 async def putPerson(id: int, data: PersonUpdate, db: Session = Depends(get_db)):
-    person = db.get(Person, id)
-    if not person:
-        raise HTTPException(status_code=404, detail="Person not found")
+    return people_controller.putPerson(db, id, data.name)
 
-    person.name = data.name  # type: ignore
-
-    db.commit()
-    db.refresh(person)
-
-    return person
 
 @router.post("/")
-async def postPerson(file: UploadFile = File(...), name: str="", db: Session = Depends(get_db)):
-    if not name:
-        raise HTTPException(status_code=400, detail="Name is required")
+async def postPerson(file: UploadFile = File(...), name: str = "", db: Session = Depends(get_db)):
+    return await people_controller.postPerson(db, file, name)
 
-    _ = await file.read()
-    image = face_recognition.load_image_file(file.file)
-
-    encodings = face_recognition.face_encodings(image)
-    if not encodings:
-        raise HTTPException(status_code=400, detail="No face detected")
-
-    encoding_blob = pickle.dumps(encodings[0])
-    person = Person(name=name, encoding=encoding_blob)
-
-    db.add(person)
-    db.commit()
-
-    return {"message": f"Person {name} created successfully"}
 
 @router.post("/recognize")
 async def recognizePerson(file: UploadFile = File(...), tolerance: float = 0.5):
-
-    if faiss_index.FAISS_INDEX is None:
-        raise HTTPException(status_code=500, detail="FAISS not initialized")
-
-    _ = await file.read()
-
-    try:
-        image = face_recognition.load_image_file(file.file)
-    except Exception:
-        raise HTTPException(status_code=500, detail="Error reading image")
-
-    image_encodings = face_recognition.face_encodings(image)
-    if not image_encodings:
-        raise HTTPException(status_code=400, detail="No person detected")
-
-    results = []
-
-    for enc in image_encodings:
-        query = np.array([enc/np.linalg.norm(enc)], dtype="float32") 
-
-        k = faiss_index.FAISS_INDEX.ntotal
-        D, I = faiss_index.FAISS_INDEX.search(query, k=k) # type: ignore
-
-        matches = []
-
-        for idx, dist in zip(I[0], D[0]):
-            if idx == -1:
-                continue
-
-            if dist < tolerance:
-                data = faiss_index.FAISS_METADATA[idx]
-                matches.append({ 
-                    "person_id": id,
-                    "picture_id": data["picture_id"] 
-                })
-
-        results.append(matches if matches else [None])
-
-    return {"matches": results}
+    return await people_controller.recognizePerson(file, tolerance)

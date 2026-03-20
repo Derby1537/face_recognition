@@ -8,46 +8,55 @@ from models.Face_Encodings import FaceEncoding
 from models.Picture import Picture
 
 if len(sys.argv) < 2:
-    print("Try python fill_pictures.py <dirname>")
+    print("Usage: python -m db.load_dir <dirname>")
+    sys.exit(1)
 
 DIR = sys.argv[1]
 
-# prepara sessione DB
 Session = sessionmaker(bind=engine)
 session = Session()
 
-# scansiona tutte le cartelle nella directory principale
-for filename in os.listdir(DIR):
-    filename_path = os.path.join(DIR, filename)
-    if not filename.endswith((".JPEG", ".png", ".jpg")):
-        continue
-    print(f"Loading {filename}")
-    picture = Picture(path=filename_path)
-    session.add(picture)
-    session.flush()
-
-    try:
-        image = face_recognition.load_image_file(filename_path)
-    except Exception:
-        continue
-
-    encodings = face_recognition.face_encodings(image)
-    if not encodings:
-        continue
-
-    for enc in encodings:
-        encoding_blob = pickle.dumps(enc)
-
-        db_encoding = FaceEncoding(
-            picture_id=picture.id,
-            encoding=encoding_blob
-        )
-
-        session.add(db_encoding)
+existing_paths = {p for (p,) in session.query(Picture.path).all()}
 
 
+def load_dir(directory: str):
+    for filename in os.listdir(directory):
+        filepath = os.path.join(directory, filename)
 
-# conferma tutte le aggiunte
+        if os.path.isdir(filepath):
+            load_dir(filepath)
+            continue
+
+        if not filename.endswith((".jpeg", ".JPEG", ".png", ".jpg")):
+            continue
+
+        if filepath in existing_paths:
+            print(f"Skipping (already loaded): {filepath}")
+            continue
+
+        print(f"Loading {filepath}")
+        picture = Picture(path=filepath)
+        session.add(picture)
+        session.flush()
+
+        try:
+            image = face_recognition.load_image_file(filepath)
+        except Exception:
+            continue
+
+        encodings = face_recognition.face_encodings(image)
+        if not encodings:
+            continue
+
+        for enc in encodings:
+            session.add(FaceEncoding(
+                picture_id=picture.id,
+                encoding=pickle.dumps(enc)
+            ))
+
+
+load_dir(DIR)
+
 session.commit()
 session.close()
-print("Database popolato con immagini")
+print("Done")
