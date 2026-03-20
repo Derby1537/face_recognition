@@ -1,8 +1,18 @@
+import os
 from fastapi import FastAPI
 from routers import people_router, pictures_router
+from dotenv import load_dotenv
 # from FAISS.faiss_index import build_index
 
-app = FastAPI(title="Face recognition API")
+load_dotenv()
+
+is_production = os.getenv("ENV") == "production"
+
+app = FastAPI(
+    title="Face recognition API",
+    docs_url=None if is_production else "/docs",
+    redoc_url=None if is_production else "/redoc",
+)
 
 app.include_router(router=people_router.router, prefix="/people", tags=["people"])
 app.include_router(router=pictures_router.router, prefix="/pictures", tags=["pictures"])
