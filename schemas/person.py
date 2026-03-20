@@ -1,16 +1,20 @@
-from typing import List
 from pydantic import BaseModel
 
-from schemas.picture import PictureSchema
-
-class PersonSchema(BaseModel):
+class PersonBase(BaseModel):
     id: int
     name: str
 
-    pictures: List[PictureSchema] = []
+    class Config:
+        from_attributes = True
+
+class PersonWithPictures(PersonBase):
+    pictures: list["PictureBase"] = []
 
     class Config:
         from_attributes = True
 
 class PersonUpdate(BaseModel):
     name: str
+
+from .picture import PictureBase
+PersonWithPictures.model_rebuild()

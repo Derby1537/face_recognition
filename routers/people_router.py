@@ -1,18 +1,22 @@
-from fastapi import APIRouter, Depends, UploadFile, File, HTTPException
-from typing import cast, List, Optional
-import face_recognition
 import pickle
-from sqlalchemy.orm import joinedload, Session
-from sqlalchemy import or_, String
+from typing import List, Optional, cast
+
+import numpy as np
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from sqlalchemy import String, or_
+from sqlalchemy.orm import Session, selectinload
+
+import face_recognition
+import FAISS.faiss_index as faiss_index
 from db.db import get_db
+from models.Face_Encodings import FaceEncoding
 from models.Person import Person
-from models.Picture import Picture
-from schemas.person import PersonSchema, PersonUpdate
+from schemas.person import PersonBase, PersonUpdate, PersonWithPictures
 
 router = APIRouter()
 
 
-@router.get("/", response_model=List[PersonSchema])
+@router.get("/", response_model=List[PersonBase])
 async def getPeople(
     search: Optional[str] = None,
     id: Optional[int] = None,
@@ -48,64 +52,51 @@ async def syncPictures(
     if not person:
         raise HTTPException(status_code=404, detail="Person not found")
 
+    db.query(FaceEncoding).filter(FaceEncoding.person_id == id).delete()
+    db.commit()
+    
     person_encoding = pickle.loads(cast(bytes, person.encoding))
 
-    pictures = db.query(Picture).all()
+    encodings = db.query(FaceEncoding).all()
+    updated = 0
 
-    added = 0
-    existing_ids = {pic.id for pic in person.pictures}
-    for picture in pictures:
+    for db_encoding in encodings:
+        encoding = pickle.loads(cast(bytes, db_encoding.encoding))
+        match = face_recognition.compare_faces([person_encoding], encoding, tolerance=tolerance)[0]
 
-        if picture.id in existing_ids:
-            continue
-
-        try:
-            image = face_recognition.load_image_file(picture.path)
-        except Exception:
-            continue
-
-        encodings = face_recognition.face_encodings(image)
-        if not encodings:
-            continue
-
-        for encoding in encodings:
-            match = face_recognition.compare_faces(
-                [person_encoding],
-                encoding,
-                tolerance=tolerance
-            )[0]
-
-            if match:
-                person.pictures.append(picture)
-                added += 1
-                break
+        if match:
+            db_encoding.person_id = id
+            db_encoding.tolerance = tolerance
+            updated += 1
 
     db.commit()
 
     return {
         "message": "Sync completed",
-        "added_relations": added
+        "updated_encodings": updated
     }
 
-@router.get("/{id}", response_model=PersonSchema)
+@router.get("/{id}", response_model=PersonWithPictures)
 async def getPerson(id: int, db: Session = Depends(get_db)):
-    person = db.query(Person)\
-        .options(joinedload(Person.pictures))\
-        .filter(Person.id == id)\
+    person = (
+        db.query(Person)
+        .options(selectinload(Person.pictures))
+        .filter(Person.id == id)
         .first()
+    )
 
     if not person:
         raise HTTPException(status_code=404, detail="Person not found")
 
     return person
 
-@router.put("/{id}", response_model=PersonSchema)
+@router.put("/{id}", response_model=PersonBase)
 async def putPerson(id: int, data: PersonUpdate, db: Session = Depends(get_db)):
     person = db.get(Person, id)
     if not person:
         raise HTTPException(status_code=404, detail="Person not found")
 
-    person.name = data.name # type: ignore
+    person.name = data.name  # type: ignore
 
     db.commit()
     db.refresh(person)
@@ -133,20 +124,13 @@ async def postPerson(file: UploadFile = File(...), name: str="", db: Session = D
     return {"message": f"Person {name} created successfully"}
 
 @router.post("/recognize")
-async def recognizePerson(file: UploadFile = File(...), tolerance: float = 0.5, db: Session = Depends(get_db)):
+async def recognizePerson(file: UploadFile = File(...), tolerance: float = 0.5):
 
-    people = db.query(Person).all()
-
-    # tieni anche l'oggetto person, non solo il nome
-    known_people = []
-    known_encodings = []
-
-    for person in people:
-        encoding_bytes = cast(bytes, person.encoding)
-        known_encodings.append(pickle.loads(encoding_bytes))
-        known_people.append(person)
+    if faiss_index.FAISS_INDEX is None:
+        raise HTTPException(status_code=500, detail="FAISS not initialized")
 
     _ = await file.read()
+
     try:
         image = face_recognition.load_image_file(file.file)
     except Exception:
@@ -154,33 +138,29 @@ async def recognizePerson(file: UploadFile = File(...), tolerance: float = 0.5, 
 
     image_encodings = face_recognition.face_encodings(image)
     if not image_encodings:
-        raise HTTPException(status_code=400, detail="No person detected in image")
+        raise HTTPException(status_code=400, detail="No person detected")
 
     results = []
 
-    for target_encoding in image_encodings:
-        matches = face_recognition.compare_faces(
-            known_encodings, target_encoding, tolerance=tolerance
-        )
+    for enc in image_encodings:
+        query = np.array([enc/np.linalg.norm(enc)], dtype="float32") 
 
-        matched_results = []
+        k = faiss_index.FAISS_INDEX.ntotal
+        D, I = faiss_index.FAISS_INDEX.search(query, k=k) # type: ignore
 
-        for i, match in enumerate(matches):
-            if match:
-                person = known_people[i]
+        matches = []
 
-                # recupera tutte le immagini associate
-                picture_paths = [pic.path for pic in person.pictures]
+        for idx, dist in zip(I[0], D[0]):
+            if idx == -1:
+                continue
 
-                matched_results.append({
-                    "name": person.name,
-                    "pictures": picture_paths
+            if dist < tolerance:
+                data = faiss_index.FAISS_METADATA[idx]
+                matches.append({ 
+                    "person_id": id,
+                    "picture_id": data["picture_id"] 
                 })
 
-        if matched_results:
-            results.append(matched_results)
-        else:
-            results.append([{"name": None, "pictures": []}])
+        results.append(matches if matches else [None])
 
-    return {"matches": results}       
-
+    return {"matches": results}

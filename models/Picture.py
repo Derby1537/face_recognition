@@ -1,6 +1,4 @@
-
 from sqlalchemy.orm import relationship
-from models.People_Pictures import people_pictures
 from . import Base
 from sqlalchemy import Column, Integer, String
 
@@ -12,6 +10,6 @@ class Picture(Base):
 
     people = relationship(
         "Person",
-        secondary=people_pictures,
+        secondary="face_encodings",  # tabella di associazione
         back_populates="pictures"
     )
