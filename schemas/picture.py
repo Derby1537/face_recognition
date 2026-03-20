@@ -7,6 +7,12 @@ class PictureBase(BaseModel):
     class Config:
         from_attributes = True
 
+class PictureWithTolerance(PictureBase):
+    tolerance: float | None = None
+
+    class Config:
+        from_attributes = True
+
 class PictureWithPeople(PictureBase):
     people: list["PersonBase"] = []
 

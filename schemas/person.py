@@ -8,7 +8,7 @@ class PersonBase(BaseModel):
         from_attributes = True
 
 class PersonWithPictures(PersonBase):
-    pictures: list["PictureBase"] = []
+    pictures: list["PictureWithTolerance"] = []
 
     class Config:
         from_attributes = True
@@ -16,5 +16,5 @@ class PersonWithPictures(PersonBase):
 class PersonUpdate(BaseModel):
     name: str
 
-from .picture import PictureBase
+from .picture import PictureBase, PictureWithTolerance
 PersonWithPictures.model_rebuild()

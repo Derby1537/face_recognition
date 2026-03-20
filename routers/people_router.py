@@ -11,7 +11,9 @@ import FAISS.faiss_index as faiss_index
 from db.db import get_db
 from models.Face_Encodings import FaceEncoding
 from models.Person import Person
+from models.Picture import Picture
 from schemas.person import PersonBase, PersonUpdate, PersonWithPictures
+from schemas.picture import PictureWithTolerance
 
 router = APIRouter()
 
@@ -52,7 +54,7 @@ async def syncPictures(
     if not person:
         raise HTTPException(status_code=404, detail="Person not found")
 
-    db.query(FaceEncoding).filter(FaceEncoding.person_id == id).delete()
+    db.query(FaceEncoding).filter(FaceEncoding.person_id == id).update({FaceEncoding.person_id: None})
     db.commit()
     
     person_encoding = pickle.loads(cast(bytes, person.encoding))
@@ -78,17 +80,23 @@ async def syncPictures(
 
 @router.get("/{id}", response_model=PersonWithPictures)
 async def getPerson(id: int, db: Session = Depends(get_db)):
-    person = (
-        db.query(Person)
-        .options(selectinload(Person.pictures))
-        .filter(Person.id == id)
-        .first()
-    )
-
+    person = db.get(Person, id)
     if not person:
         raise HTTPException(status_code=404, detail="Person not found")
 
-    return person
+    encodings = (
+        db.query(FaceEncoding, Picture)
+        .join(Picture, FaceEncoding.picture_id == Picture.id)
+        .filter(FaceEncoding.person_id == id)
+        .all()
+    )
+
+    pictures = [
+        PictureWithTolerance(id=pic.id, path=pic.path, tolerance=enc.tolerance)
+        for enc, pic in encodings
+    ]
+
+    return PersonWithPictures(id=person.id, name=person.name, pictures=pictures)
 
 @router.put("/{id}", response_model=PersonBase)
 async def putPerson(id: int, data: PersonUpdate, db: Session = Depends(get_db)):
