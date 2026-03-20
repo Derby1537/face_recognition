@@ -15,9 +15,12 @@ async def getPeople(
     search: Optional[str] = None,
     id: Optional[int] = None,
     name: Optional[str] = None,
+    page: int = 1,
+    page_size: int = 25,
     db: Session = Depends(get_db)
 ):
-    return people_controller.getPeople(db, search, id, name)
+    page_size = min(page_size, 100)
+    return people_controller.getPeople(db, search, id, name, page, page_size)
 
 
 @router.post("/sync_pictures")
@@ -42,6 +45,11 @@ async def putPerson(id: int, data: PersonUpdate, db: Session = Depends(get_db)):
 @router.post("/")
 async def postPerson(file: UploadFile = File(...), name: str = "", db: Session = Depends(get_db)):
     return await people_controller.postPerson(db, file, name)
+
+
+@router.delete("/{id}")
+async def deletePerson(id: int, db: Session = Depends(get_db)):
+    return people_controller.deletePerson(db, id)
 
 
 @router.post("/recognize")

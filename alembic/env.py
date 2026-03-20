@@ -14,7 +14,7 @@ config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-# Imposta la URL dal .env
+# Set the database URL from .env
 DATABASE_USER = os.getenv("DATABASE_USER")
 DATABASE_PASS = os.getenv("DATABASE_PASS")
 DATABASE_HOST = os.getenv("DATABASE_HOST")
@@ -25,7 +25,7 @@ config.set_main_option(
     f"mysql+pymysql://{DATABASE_USER}:{DATABASE_PASS}@{DATABASE_HOST}/{DATABASE_NAME}?charset=utf8mb4"
 )
 
-# Import dei modelli per l'autogenerate
+# Import models for autogenerate support
 from models import Base
 target_metadata = Base.metadata
 

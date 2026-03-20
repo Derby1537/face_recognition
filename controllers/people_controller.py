@@ -15,7 +15,7 @@ from schemas.person import PersonWithPictures
 from schemas.picture import PictureWithTolerance
 
 
-def getPeople(db: Session, search: Optional[str], id: Optional[int], name: Optional[str]) -> List[Person]:
+def getPeople(db: Session, search: Optional[str], id: Optional[int], name: Optional[str], page: int, page_size: int) -> List[Person]:
     query = db.query(Person)
 
     if id is not None:
@@ -32,8 +32,8 @@ def getPeople(db: Session, search: Optional[str], id: Optional[int], name: Optio
             )
         )
 
-    return query.all()
-
+    offset = (page - 1) * page_size
+    return query.offset(offset).limit(page_size).all()
 
 def getPerson(db: Session, id: int) -> PersonWithPictures:
     person = db.get(Person, id)
@@ -54,7 +54,6 @@ def getPerson(db: Session, id: int) -> PersonWithPictures:
 
     return PersonWithPictures(id=cast(int, person.id), name=cast(str, person.name), pictures=pictures)
 
-
 def putPerson(db: Session, id: int, name: str) -> Person:
     person = db.get(Person, id)
     if not person:
@@ -66,7 +65,6 @@ def putPerson(db: Session, id: int, name: str) -> Person:
     db.refresh(person)
 
     return person
-
 
 async def postPerson(db: Session, file: UploadFile, name: str) -> dict:
     if not name:
@@ -87,6 +85,15 @@ async def postPerson(db: Session, file: UploadFile, name: str) -> dict:
 
     return {"message": f"Person {name} created successfully"}
 
+def deletePerson(db: Session, id: int) -> dict:
+    person = db.get(Person, id)
+    if not person:
+        raise HTTPException(status_code=404, detail="Person not found")
+
+    db.delete(person)
+    db.commit()
+
+    return {"message": "Person deleted successfully"}
 
 def syncPictures(db: Session, id: int, tolerance: float) -> dict:
     person = db.get(Person, id)
@@ -113,7 +120,6 @@ def syncPictures(db: Session, id: int, tolerance: float) -> dict:
     db.commit()
 
     return {"message": "Sync completed", "updated_encodings": updated}
-
 
 async def recognizePerson(file: UploadFile, tolerance: float) -> dict:
     if faiss_index.FAISS_INDEX is None:

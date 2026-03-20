@@ -20,6 +20,10 @@ async def getPictures(page: int = 1, page_size: int = 25, db: Session = Depends(
 async def getPicture(id: int, db: Session = Depends(get_db)):
     return pictures_controller.getPicture(db, id)
 
+@router.post("/", response_model=PictureBase)
+async def postPicture(path: str, db: Session = Depends(get_db)):
+    return pictures_controller.postPicture(db, path)
+
 
 @router.delete("/{id}")
 async def deletePicture(id: int, db: Session = Depends(get_db)):
