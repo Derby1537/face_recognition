@@ -5,16 +5,16 @@ from typing import List
 from fastapi import HTTPException
 from sqlalchemy.orm import Session, selectinload
 
+import face_recognition
 from models.Face_Encodings import FaceEncoding
 from models.Picture import Picture
-from schemas.picture import PictureBase, PictureWithPeople
-
-import face_recognition
+from schemas.picture import PictureWithPeople
 
 
 def getPictures(db: Session, page: int, page_size: int) -> List[Picture]:
     offset = (page - 1) * page_size
     return db.query(Picture).offset(offset).limit(page_size).all()
+
 
 def getPicture(db: Session, id: int) -> PictureWithPeople:
     picture = (
@@ -28,6 +28,7 @@ def getPicture(db: Session, id: int) -> PictureWithPeople:
         raise HTTPException(status_code=404, detail="Picture not found")
 
     return picture
+
 
 def postPicture(db: Session, path: str) -> Picture:
     if not os.path.isfile(path):
@@ -54,6 +55,7 @@ def postPicture(db: Session, path: str) -> Picture:
     db.refresh(picture)
 
     return picture
+
 
 def deletePicture(db: Session, id: int) -> dict:
     picture = db.get(Picture, id)
