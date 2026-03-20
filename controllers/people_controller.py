@@ -15,7 +15,14 @@ from schemas.person import PersonWithPictures
 from schemas.picture import PictureWithTolerance
 
 
-def getPeople(db: Session, search: Optional[str], id: Optional[int], name: Optional[str], page: int, page_size: int) -> List[Person]:
+def getPeople(
+    db: Session,
+    search: Optional[str],
+    id: Optional[int],
+    name: Optional[str],
+    page: int,
+    page_size: int,
+) -> List[Person]:
     query = db.query(Person)
 
     if id is not None:
@@ -35,6 +42,7 @@ def getPeople(db: Session, search: Optional[str], id: Optional[int], name: Optio
     offset = (page - 1) * page_size
     return query.offset(offset).limit(page_size).all()
 
+
 def getPerson(db: Session, id: int) -> PersonWithPictures:
     person = db.get(Person, id)
     if not person:
@@ -52,7 +60,10 @@ def getPerson(db: Session, id: int) -> PersonWithPictures:
         for enc, pic in encodings
     ]
 
-    return PersonWithPictures(id=cast(int, person.id), name=cast(str, person.name), pictures=pictures)
+    return PersonWithPictures(
+        id=cast(int, person.id), name=cast(str, person.name), pictures=pictures
+    )
+
 
 def putPerson(db: Session, id: int, name: str) -> Person:
     person = db.get(Person, id)
@@ -65,6 +76,7 @@ def putPerson(db: Session, id: int, name: str) -> Person:
     db.refresh(person)
 
     return person
+
 
 async def postPerson(db: Session, file: UploadFile, name: str) -> dict:
     if not name:
@@ -85,6 +97,7 @@ async def postPerson(db: Session, file: UploadFile, name: str) -> dict:
 
     return {"message": f"Person {name} created successfully"}
 
+
 def deletePerson(db: Session, id: int) -> dict:
     person = db.get(Person, id)
     if not person:
@@ -95,22 +108,37 @@ def deletePerson(db: Session, id: int) -> dict:
 
     return {"message": "Person deleted successfully"}
 
+
 def syncPictures(db: Session, id: int, tolerance: float) -> dict:
     person = db.get(Person, id)
     if not person:
         raise HTTPException(status_code=404, detail="Person not found")
 
-    db.query(FaceEncoding).filter(FaceEncoding.person_id == id).update({FaceEncoding.person_id: None})
+    # Reset only encodings assigned to this person with a higher (less precise) tolerance
+    db.query(FaceEncoding).filter(
+        FaceEncoding.person_id == id,
+        FaceEncoding.tolerance > tolerance
+    ).update({FaceEncoding.person_id: None, FaceEncoding.tolerance: None})
     db.commit()
 
     person_encoding = pickle.loads(cast(bytes, person.encoding))
 
-    encodings = db.query(FaceEncoding).all()
+    # Only consider encodings that are unassigned or assigned to this person with worse tolerance
+    encodings = db.query(FaceEncoding).filter(
+        (FaceEncoding.person_id == None) |
+        (FaceEncoding.person_id == id)
+    ).all()
     updated = 0
 
     for db_encoding in encodings:
+        # Skip encodings already assigned to this person with a better (lower) tolerance
+        if db_encoding.person_id == id and db_encoding.tolerance is not None and db_encoding.tolerance <= tolerance:
+            continue
+
         encoding = pickle.loads(cast(bytes, db_encoding.encoding))
-        match = face_recognition.compare_faces([person_encoding], encoding, tolerance=tolerance)[0]
+        match = face_recognition.compare_faces(
+            [person_encoding], encoding, tolerance=tolerance
+        )[0]
 
         if match:
             db_encoding.person_id = id
@@ -120,6 +148,7 @@ def syncPictures(db: Session, id: int, tolerance: float) -> dict:
     db.commit()
 
     return {"message": "Sync completed", "updated_encodings": updated}
+
 
 async def recognizePerson(file: UploadFile, tolerance: float) -> dict:
     if faiss_index.FAISS_INDEX is None:
@@ -152,10 +181,7 @@ async def recognizePerson(file: UploadFile, tolerance: float) -> dict:
 
             if dist < tolerance:
                 data = faiss_index.FAISS_METADATA[idx]
-                matches.append({
-                    "person_id": id,
-                    "picture_id": data["picture_id"]
-                })
+                matches.append({"person_id": id, "picture_id": data["picture_id"]})
 
         results.append(matches if matches else [None])
 
