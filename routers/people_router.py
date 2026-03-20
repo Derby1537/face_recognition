@@ -43,8 +43,8 @@ async def putPerson(id: int, data: PersonUpdate, db: Session = Depends(get_db)):
 
 
 @router.post("/")
-async def postPerson(file: UploadFile = File(...), name: str = "", db: Session = Depends(get_db)):
-    return await people_controller.postPerson(db, file, name)
+async def postPerson(file: UploadFile = File(...), name: str = "", sync: bool = False, tolerance: float = 0.5, db: Session = Depends(get_db)):
+    return await people_controller.postPerson(db, file, name, sync, tolerance)
 
 
 @router.delete("/{id}")

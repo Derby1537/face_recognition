@@ -78,7 +78,7 @@ def putPerson(db: Session, id: int, name: str) -> Person:
     return person
 
 
-async def postPerson(db: Session, file: UploadFile, name: str) -> dict:
+async def postPerson(db: Session, file: UploadFile, name: str, sync: bool = False, tolerance: float = 0.5) -> dict:
     if not name:
         raise HTTPException(status_code=400, detail="Name is required")
 
@@ -94,6 +94,11 @@ async def postPerson(db: Session, file: UploadFile, name: str) -> dict:
 
     db.add(person)
     db.commit()
+    db.refresh(person)
+
+    if sync:
+        sync_result = syncPictures(db, cast(int, person.id), tolerance)
+        return {"message": f"Person {name} created successfully", "sync": sync_result}
 
     return {"message": f"Person {name} created successfully"}
 
