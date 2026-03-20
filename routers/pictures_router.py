@@ -11,8 +11,9 @@ router = APIRouter()
 
 
 @router.get("/", response_model=List[PictureBase])
-async def getPictures(db: Session = Depends(get_db)):
-    return pictures_controller.getPictures(db)
+async def getPictures(page: int = 1, page_size: int = 25, db: Session = Depends(get_db)):
+    page_size = min(page_size, 100)
+    return pictures_controller.getPictures(db, page, page_size)
 
 
 @router.get("/{id}", response_model=PictureWithPeople)

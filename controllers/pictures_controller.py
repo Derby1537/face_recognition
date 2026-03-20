@@ -7,8 +7,9 @@ from models.Picture import Picture
 from schemas.picture import PictureBase, PictureWithPeople
 
 
-def getPictures(db: Session) -> List[PictureBase]:
-    return db.query(Picture).all()
+def getPictures(db: Session, page: int, page_size: int) -> List[Picture]:
+    offset = (page - 1) * page_size
+    return db.query(Picture).offset(offset).limit(page_size).all()
 
 
 def getPicture(db: Session, id: int) -> PictureWithPeople:
