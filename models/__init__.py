@@ -4,3 +4,4 @@ Base = declarative_base()
 
 from .Person import Person
 from .Picture import Picture
+from .FaceEncodings import FaceEncoding

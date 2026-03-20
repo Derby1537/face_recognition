@@ -11,3 +11,6 @@ class PersonSchema(BaseModel):
 
     class Config:
         from_attributes = True
+
+class PersonUpdate(BaseModel):
+    name: str

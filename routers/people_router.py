@@ -7,7 +7,7 @@ from sqlalchemy import or_, String
 from db.db import get_db
 from models.Person import Person
 from models.Picture import Picture
-from schemas.person import PersonSchema
+from schemas.person import PersonSchema, PersonUpdate
 
 router = APIRouter()
 
@@ -87,7 +87,6 @@ async def syncPictures(
         "added_relations": added
     }
 
-
 @router.get("/{id}", response_model=PersonSchema)
 async def getPerson(id: int, db: Session = Depends(get_db)):
     person = db.query(Person)\
@@ -97,6 +96,19 @@ async def getPerson(id: int, db: Session = Depends(get_db)):
 
     if not person:
         raise HTTPException(status_code=404, detail="Person not found")
+
+    return person
+
+@router.put("/{id}", response_model=PersonSchema)
+async def putPerson(id: int, data: PersonUpdate, db: Session = Depends(get_db)):
+    person = db.get(Person, id)
+    if not person:
+        raise HTTPException(status_code=404, detail="Person not found")
+
+    person.name = data.name # type: ignore
+
+    db.commit()
+    db.refresh(person)
 
     return person
 
