@@ -27,7 +27,7 @@ def load_dir(directory: str):
             load_dir(filepath)
             continue
 
-        if not filename.endswith((".jpeg", ".JPEG", ".png", ".jpg")):
+        if not filename.lower().endswith((".jpeg", ".png", ".jpg")):
             continue
 
         if filepath in existing_paths:

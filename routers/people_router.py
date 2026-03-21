@@ -10,7 +10,7 @@ from schemas.person import PersonBase, PersonUpdate, PersonWithPictures
 router = APIRouter()
 
 
-@router.get("/", response_model=List[PersonBase])
+@router.get("/", response_model=List[PersonWithPictures])
 async def getPeople(
     search: Optional[str] = None,
     id: Optional[int] = None,
@@ -45,6 +45,11 @@ async def putPerson(id: int, data: PersonUpdate, db: Session = Depends(get_db)):
 @router.post("/")
 async def postPerson(file: UploadFile = File(...), name: str = "", sync: bool = False, tolerance: float = 0.5, db: Session = Depends(get_db)):
     return await people_controller.postPerson(db, file, name, sync, tolerance)
+
+
+@router.delete("/{id}/encodings/{encoding_id}")
+async def unlinkEncoding(id: int, encoding_id: int, db: Session = Depends(get_db)):
+    return people_controller.unlinkEncoding(db, id, encoding_id)
 
 
 @router.delete("/{id}")

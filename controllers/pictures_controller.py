@@ -63,6 +63,8 @@ def deletePicture(db: Session, id: int) -> dict:
     if not picture:
         raise HTTPException(status_code=404, detail="Picture not found")
 
+    db.query(FaceEncoding).filter(FaceEncoding.picture_id == id).delete()
+
     db.delete(picture)
     db.commit()
 

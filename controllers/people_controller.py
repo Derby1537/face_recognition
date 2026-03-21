@@ -4,7 +4,7 @@ from typing import List, Optional, cast
 import numpy as np
 from fastapi import HTTPException, UploadFile
 from sqlalchemy import String, or_
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 import face_recognition
 import FAISS.faiss_index as faiss_index
@@ -15,6 +15,7 @@ from schemas.person import PersonWithPictures
 from schemas.picture import PictureWithTolerance
 
 
+
 def getPeople(
     db: Session,
     search: Optional[str],
@@ -22,7 +23,7 @@ def getPeople(
     name: Optional[str],
     page: int,
     page_size: int,
-) -> List[Person]:
+) -> List[PersonWithPictures]:
     query = db.query(Person)
 
     if id is not None:
@@ -40,28 +41,46 @@ def getPeople(
         )
 
     offset = (page - 1) * page_size
-    return query.offset(offset).limit(page_size).all()
-
-
-def getPerson(db: Session, id: int) -> PersonWithPictures:
-    person = db.get(Person, id)
-    if not person:
-        raise HTTPException(status_code=404, detail="Person not found")
-
-    encodings = (
-        db.query(FaceEncoding, Picture)
-        .join(Picture, FaceEncoding.picture_id == Picture.id)
-        .filter(FaceEncoding.person_id == id)
+    people = (
+        query
+        .options(selectinload(Person.face_encodings).selectinload(FaceEncoding.picture))
+        .offset(offset)
+        .limit(page_size)
         .all()
     )
 
-    pictures = [
-        PictureWithTolerance(id=pic.id, path=pic.path, tolerance=enc.tolerance)
-        for enc, pic in encodings
+    return [
+        PersonWithPictures(
+            id=cast(int, p.id),
+            name=cast(str, p.name),
+            pictures=[
+                PictureWithTolerance(id=enc.picture.id, path=enc.picture.path, tolerance=enc.tolerance)
+                for enc in p.face_encodings
+                if enc.picture is not None
+            ],
+        )
+        for p in people
     ]
 
+
+def getPerson(db: Session, id: int) -> PersonWithPictures:
+    person = (
+        db.query(Person)
+        .options(selectinload(Person.face_encodings).selectinload(FaceEncoding.picture))
+        .filter(Person.id == id)
+        .first()
+    )
+    if not person:
+        raise HTTPException(status_code=404, detail="Person not found")
+
     return PersonWithPictures(
-        id=cast(int, person.id), name=cast(str, person.name), pictures=pictures
+        id=cast(int, person.id),
+        name=cast(str, person.name),
+        pictures=[
+            PictureWithTolerance(id=enc.picture.id, path=enc.picture.path, tolerance=enc.tolerance)
+            for enc in person.face_encodings
+            if enc.picture is not None
+        ],
     )
 
 
@@ -103,10 +122,29 @@ async def postPerson(db: Session, file: UploadFile, name: str, sync: bool = Fals
     return {"message": f"Person {name} created successfully"}
 
 
+def unlinkEncoding(db: Session, person_id: int, encoding_id: int) -> dict:
+    encoding = db.query(FaceEncoding).filter(
+        FaceEncoding.id == encoding_id,
+        FaceEncoding.person_id == person_id
+    ).first()
+    if not encoding:
+        raise HTTPException(status_code=404, detail="Encoding not found")
+
+    encoding.person_id = None
+    encoding.tolerance = None
+    db.commit()
+
+    return {"message": "Encoding unlinked successfully"}
+
+
 def deletePerson(db: Session, id: int) -> dict:
     person = db.get(Person, id)
     if not person:
         raise HTTPException(status_code=404, detail="Person not found")
+
+    db.query(FaceEncoding).filter(FaceEncoding.person_id == id).update(
+        {FaceEncoding.person_id: None, FaceEncoding.tolerance: None}
+    )
 
     db.delete(person)
     db.commit()

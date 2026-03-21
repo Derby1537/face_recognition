@@ -12,7 +12,12 @@ class Person(Base):
 
     pictures = relationship(
         "Picture",
-        secondary="face_encodings",  # tabella di associazione
+        secondary="face_encodings",
         back_populates="people"
+    )
+    face_encodings = relationship(
+        "FaceEncoding",
+        foreign_keys="FaceEncoding.person_id",
+        primaryjoin="Person.id == FaceEncoding.person_id",
     )
 
