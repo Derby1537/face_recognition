@@ -1,6 +1,6 @@
 from typing import List
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, File, UploadFile
 from sqlalchemy.orm import Session
 
 from controllers import pictures_controller
@@ -23,6 +23,11 @@ async def getPicture(id: int, db: Session = Depends(get_db)):
 @router.post("/", response_model=PictureBase)
 async def postPicture(path: str, db: Session = Depends(get_db)):
     return pictures_controller.postPicture(db, path)
+
+
+@router.post("/upload", response_model=PictureBase)
+async def uploadPicture(file: UploadFile = File(...), db: Session = Depends(get_db)):
+    return await pictures_controller.uploadPicture(db, file)
 
 
 @router.delete("/{id}")
