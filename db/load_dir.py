@@ -1,11 +1,15 @@
 import os
 import pickle
 import sys
-import face_recognition
+from dotenv import load_dotenv
+
+load_dotenv(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), '.env'))
+
 from sqlalchemy.orm import sessionmaker
 from db.db import engine
 from models.Face_Encodings import FaceEncoding
 from models.Picture import Picture
+import face_recognition
 
 if len(sys.argv) < 2:
     print("Usage: python -m db.load_dir <dirname>")
