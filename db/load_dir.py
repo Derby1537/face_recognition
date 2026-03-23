@@ -1,3 +1,4 @@
+import io
 import os
 import pickle
 import sys
@@ -44,7 +45,11 @@ def load_dir(directory: str):
         session.flush()
 
         try:
-            image = face_recognition.load_image_file(filepath)
+            with open(filepath, "rb") as f:
+                contents = f.read()
+            is_jpeg = filename.lower().endswith((".jpg", ".jpeg"))
+            src = io.BytesIO(bytes([0xFF, 0xD8, 0xFF]) + contents[3:]) if is_jpeg else io.BytesIO(contents)
+            image = face_recognition.load_image_file(src)
         except Exception:
             continue
 
