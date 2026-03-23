@@ -1,3 +1,5 @@
+import io
+import os
 import pickle
 from typing import List, Optional, cast
 
@@ -99,8 +101,10 @@ async def postPerson(db: Session, file: UploadFile, name: str, sync: bool = Fals
     if not name:
         raise HTTPException(status_code=400, detail="Name is required")
 
-    _ = await file.read()
-    image = face_recognition.load_image_file(file.file)
+    contents = await file.read()
+    ext = os.path.splitext(file.filename or "")[-1].lower()
+    src = io.BytesIO(bytes([0xFF, 0xD8, 0xFF]) + contents[3:]) if ext in (".jpg", ".jpeg") else io.BytesIO(contents)
+    image = face_recognition.load_image_file(src)
 
     encodings = face_recognition.face_encodings(image)
     if not encodings:

@@ -1,3 +1,4 @@
+import io
 import os
 import pickle
 import uuid
@@ -32,6 +33,11 @@ def getPicture(db: Session, id: int) -> PictureWithPeople:
     return picture
 
 
+def _decode_jpeg(data: bytes) -> io.BytesIO:
+    fixed = bytes([0xFF, 0xD8, 0xFF]) + data[3:]
+    return io.BytesIO(fixed)
+
+
 def _save_encodings(db: Session, picture_id: int, image) -> None:
     encodings = face_recognition.face_encodings(image)
     for encoding in encodings:
@@ -46,7 +52,11 @@ def postPicture(db: Session, path: str) -> PictureBase:
         raise HTTPException(status_code=409, detail="Picture already loaded")
 
     try:
-        image = face_recognition.load_image_file(path)
+        ext = os.path.splitext(path)[-1].lower()
+        with open(path, "rb") as f:
+            contents = f.read()
+        src = _decode_jpeg(contents) if ext in (".jpg", ".jpeg") else io.BytesIO(contents)
+        image = face_recognition.load_image_file(src)
     except Exception:
         raise HTTPException(status_code=400, detail="Error opening image")
 
@@ -80,7 +90,8 @@ async def uploadPicture(db: Session, file: UploadFile) -> PictureBase:
         raise HTTPException(status_code=409, detail="Picture already loaded")
 
     try:
-        image = face_recognition.load_image_file(path)
+        src = _decode_jpeg(contents) if ext in (".jpg", ".jpeg") else io.BytesIO(contents)
+        image = face_recognition.load_image_file(src)
     except Exception:
         os.remove(path)
         raise HTTPException(status_code=400, detail="Error opening image")
