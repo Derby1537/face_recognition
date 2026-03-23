@@ -13,11 +13,14 @@ class Person(Base):
     pictures = relationship(
         "Picture",
         secondary="face_encodings",
-        back_populates="people"
+        back_populates="people",
+        viewonly=True,
+        overlaps="face_encodings"
     )
     face_encodings = relationship(
         "FaceEncoding",
         foreign_keys="FaceEncoding.person_id",
         primaryjoin="Person.id == FaceEncoding.person_id",
+        overlaps="pictures"
     )
 

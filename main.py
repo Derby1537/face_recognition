@@ -1,14 +1,23 @@
 import os
+from contextlib import asynccontextmanager
 from fastapi import FastAPI
-from routers import people_router, pictures_router
+from routers import people_router, pictures_router, stats_router
 from dotenv import load_dotenv
-# from FAISS.faiss_index import build_index
+from db.db import init_db
 
 load_dotenv()
 
 is_production = os.getenv("ENV") == "production"
 
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    init_db()
+    yield
+
+
 app = FastAPI(
+    lifespan=lifespan,
     title="Face recognition API",
     docs_url=None if is_production else "/docs",
     redoc_url=None if is_production else "/redoc",
@@ -16,15 +25,7 @@ app = FastAPI(
 
 app.include_router(router=people_router.router, prefix="/people", tags=["people"])
 app.include_router(router=pictures_router.router, prefix="/pictures", tags=["pictures"])
-
-# @app.on_event("startup")
-# def startup_event():
-#     build_index()
-#
-# @app.post("/rebuild_index")
-# def rebuild_index():
-#     build_index()
-#     return {"message": "Index built successfully"}
+app.include_router(router=stats_router.router, prefix="/stats", tags=["stats"])
 
 @app.get("/")
 def read_root():

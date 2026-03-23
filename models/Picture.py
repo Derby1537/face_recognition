@@ -10,6 +10,8 @@ class Picture(Base):
 
     people = relationship(
         "Person",
-        secondary="face_encodings",  # tabella di associazione
-        back_populates="pictures"
+        secondary="face_encodings",
+        back_populates="pictures",
+        viewonly=True,
+        overlaps="face_encodings"
     )

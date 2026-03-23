@@ -57,6 +57,3 @@ async def deletePerson(id: int, db: Session = Depends(get_db)):
     return people_controller.deletePerson(db, id)
 
 
-@router.post("/recognize")
-async def recognizePerson(file: UploadFile = File(...), tolerance: float = 0.5):
-    return await people_controller.recognizePerson(file, tolerance)

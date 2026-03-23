@@ -17,5 +17,5 @@ class FaceEncoding(Base):
     encoding: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
     tolerance: Mapped[float | None] = mapped_column(nullable=True)
 
-    picture: Mapped["Picture"] = relationship("Picture")
+    picture: Mapped["Picture"] = relationship("Picture", overlaps="people,pictures")
 
