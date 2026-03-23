@@ -1,14 +1,30 @@
-archive/
+# environment
 .env
-.DS_Store
 myvenv/
 
+# macOS
+.DS_Store
 **/.DS_Store
 **/._.DS_Store
 
+# Python
 __pycache__/
+**/__pycache__/
 *.pyc
 *.pyo
 *.pyd
+
+# build artifacts
 build/
 dist/
+*.spec
+
+# uploaded/generated images
+public/
+
+# Docker export
+*.tar.gz
+
+# misc
+archive/
+benchmark.txt
