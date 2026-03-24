@@ -1,30 +1,32 @@
 # -*- mode: python ; coding: utf-8 -*-
 import sys
 import os
-from PyInstaller.utils.hooks import collect_data_files, collect_dynamic_libs
+from PyInstaller.utils.hooks import collect_data_files, collect_dynamic_libs, collect_all
 
 block_cipher = None
 
-# Collect data files from packages that need them
+# Collect everything from onnxruntime (datas, binaries, hiddenimports)
 datas = []
+binaries = []
+hiddenimports_extra = []
+tmp_ret = collect_all('onnxruntime')
+datas += tmp_ret[0]
+binaries += tmp_ret[1]
+hiddenimports_extra += tmp_ret[2]
+
 datas += collect_data_files('insightface')
-datas += collect_data_files('onnxruntime')
 
 # include the insightface models from the project directory
 _models_dir = os.path.join(os.path.dirname(os.path.abspath(SPEC)), 'ai_models')
 if os.path.isdir(_models_dir):
     datas += [(_models_dir, 'ai_models')]
 
-# Collect native shared libraries
-binaries = []
-binaries += collect_dynamic_libs('onnxruntime')
-
 a = Analysis(
     ['run.py'],
     pathex=['.'],
     binaries=binaries,
     datas=datas,
-    hiddenimports=[
+    hiddenimports=hiddenimports_extra + [
         # FastAPI / Starlette
         'uvicorn.logging',
         'uvicorn.loops',
