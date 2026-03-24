@@ -22,7 +22,6 @@ async def getPeople(
     page_size = min(page_size, 100)
     return people_controller.getPeople(db, search, id, name, page, page_size)
 
-
 @router.post("/sync_pictures")
 async def syncPictures(
     id: int,
@@ -55,5 +54,14 @@ async def unlinkEncoding(id: int, encoding_id: int, db: Session = Depends(get_db
 @router.delete("/{id}")
 async def deletePerson(id: int, db: Session = Depends(get_db)):
     return people_controller.deletePerson(db, id)
+
+
+@router.post("/recognize")
+async def recognizePerson(
+    file: UploadFile = File(...),
+    tolerance: float = 0.5,
+    db: Session = Depends(get_db)
+):
+    return await people_controller.recognizePerson(db, file, tolerance)
 
 
