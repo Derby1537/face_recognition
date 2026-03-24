@@ -69,7 +69,6 @@ a = Analysis(
     hooksconfig={},
     runtime_hooks=[],
     excludes=[
-        'matplotlib', 'mpl_toolkits', 'contourpy', 'kiwisolver', 'cycler',
         'Cython',
         'tkinter', '_tkinter',
         'IPython', 'jupyter', 'notebook',
