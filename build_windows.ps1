@@ -4,7 +4,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
 & "myvenv\Scripts\Activate.ps1"
-pyinstaller face_recognition_app.spec --noconfirm --collect-all onnxruntime
+.\myvenv\Scripts\pyinstaller.exe face_recognition_app.spec --noconfirm
 
 Write-Host "Copying .env..."
 Copy-Item ".env" "dist\face_recognition\.env"
