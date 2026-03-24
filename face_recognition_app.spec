@@ -14,6 +14,14 @@ datas += tmp_ret[0]
 binaries += tmp_ret[1]
 hiddenimports_extra += tmp_ret[2]
 
+# Explicitly copy the entire onnxruntime package directory (covers .pyd and DLLs on Windows)
+try:
+    import onnxruntime as _ort
+    _ort_dir = os.path.dirname(_ort.__file__)
+    datas += [(_ort_dir, 'onnxruntime')]
+except ImportError:
+    pass
+
 datas += collect_data_files('insightface')
 
 # include the insightface models from the project directory
