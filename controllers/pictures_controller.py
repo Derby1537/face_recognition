@@ -1,13 +1,14 @@
-import io
 import os
 import pickle
 import uuid
 from typing import List
 
+import numpy as np
+import cv2
 from fastapi import HTTPException, UploadFile
 from sqlalchemy.orm import Session, selectinload
 
-import face_recognition
+from core.face_engine import get_face_app
 from models.Face_Encodings import FaceEncoding
 from models.Picture import Picture
 from schemas.picture import PictureBase, PictureWithPeople
@@ -33,15 +34,23 @@ def getPicture(db: Session, id: int) -> PictureWithPeople:
     return picture
 
 
-def _decode_jpeg(data: bytes) -> io.BytesIO:
-    fixed = bytes([0xFF, 0xD8, 0xFF]) + data[3:]
-    return io.BytesIO(fixed)
+def _decode_jpeg(data: bytes) -> bytes:
+    return bytes([0xFF, 0xD8, 0xFF]) + data[3:]
 
 
-def _save_encodings(db: Session, picture_id: int, image) -> None:
-    encodings = face_recognition.face_encodings(image)
-    for encoding in encodings:
-        db.add(FaceEncoding(picture_id=picture_id, encoding=pickle.dumps(encoding)))
+def _load_image_from_bytes(data: bytes) -> np.ndarray:
+    arr = np.frombuffer(data, dtype=np.uint8)
+    image = cv2.imdecode(arr, cv2.IMREAD_COLOR)
+    if image is None:
+        raise ValueError("Could not decode image")
+    return cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+
+
+def _save_encodings(db: Session, picture_id: int, image: np.ndarray) -> None:
+    app = get_face_app()
+    faces = app.get(image)
+    for face in faces:
+        db.add(FaceEncoding(picture_id=picture_id, encoding=pickle.dumps(face.embedding)))
 
 
 def postPicture(db: Session, path: str) -> PictureBase:
@@ -55,8 +64,8 @@ def postPicture(db: Session, path: str) -> PictureBase:
         ext = os.path.splitext(path)[-1].lower()
         with open(path, "rb") as f:
             contents = f.read()
-        src = _decode_jpeg(contents) if ext in (".jpg", ".jpeg") else io.BytesIO(contents)
-        image = face_recognition.load_image_file(src)
+        data = _decode_jpeg(contents) if ext in (".jpg", ".jpeg") else contents
+        image = _load_image_from_bytes(data)
     except Exception:
         raise HTTPException(status_code=400, detail="Error opening image")
 
@@ -90,8 +99,8 @@ async def uploadPicture(db: Session, file: UploadFile) -> PictureBase:
         raise HTTPException(status_code=409, detail="Picture already loaded")
 
     try:
-        src = _decode_jpeg(contents) if ext in (".jpg", ".jpeg") else io.BytesIO(contents)
-        image = face_recognition.load_image_file(src)
+        data = _decode_jpeg(contents) if ext in (".jpg", ".jpeg") else contents
+        image = _load_image_from_bytes(data)
     except Exception:
         os.remove(path)
         raise HTTPException(status_code=400, detail="Error opening image")

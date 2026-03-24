@@ -1,17 +1,30 @@
-import io
 import os
 import pickle
 from typing import List, Optional, cast
 
+import numpy as np
+import cv2
 from fastapi import HTTPException, UploadFile
 from sqlalchemy import String, or_
 from sqlalchemy.orm import Session, selectinload
 
-import face_recognition
+from core.face_engine import get_face_app
 from models.Face_Encodings import FaceEncoding
 from models.Person import Person
 from schemas.person import PersonWithPictures
 from schemas.picture import PictureWithTolerance
+
+
+def _cosine_similarity(a: np.ndarray, b: np.ndarray) -> float:
+    return float(np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b)))
+
+
+def _load_image_from_bytes(data: bytes) -> np.ndarray:
+    arr = np.frombuffer(data, dtype=np.uint8)
+    image = cv2.imdecode(arr, cv2.IMREAD_COLOR)
+    if image is None:
+        raise ValueError("Could not decode image")
+    return cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
 
 
 
@@ -102,14 +115,15 @@ async def postPerson(db: Session, file: UploadFile, name: str, sync: bool = Fals
 
     contents = await file.read()
     ext = os.path.splitext(file.filename or "")[-1].lower()
-    src = io.BytesIO(bytes([0xFF, 0xD8, 0xFF]) + contents[3:]) if ext in (".jpg", ".jpeg") else io.BytesIO(contents)
-    image = face_recognition.load_image_file(src)
+    fixed = bytes([0xFF, 0xD8, 0xFF]) + contents[3:] if ext in (".jpg", ".jpeg") else contents
+    image = _load_image_from_bytes(fixed)
 
-    encodings = face_recognition.face_encodings(image)
-    if not encodings:
+    app = get_face_app()
+    faces = app.get(image)
+    if not faces:
         raise HTTPException(status_code=400, detail="No face detected")
 
-    encoding_blob = pickle.dumps(encodings[0])
+    encoding_blob = pickle.dumps(faces[0].embedding)
     person = Person(name=name, encoding=encoding_blob)
 
     db.add(person)
@@ -126,26 +140,28 @@ async def postPerson(db: Session, file: UploadFile, name: str, sync: bool = Fals
 async def recognizePerson(db: Session, file: UploadFile, tolerance: float = 0.5) -> dict:
     contents = await file.read()
     ext = os.path.splitext(file.filename or "")[-1].lower()
-    src = io.BytesIO(bytes([0xFF, 0xD8, 0xFF]) + contents[3:]) if ext in (".jpg", ".jpeg") else io.BytesIO(contents)
+    fixed = bytes([0xFF, 0xD8, 0xFF]) + contents[3:] if ext in (".jpg", ".jpeg") else contents
 
     try:
-        image = face_recognition.load_image_file(src)
+        image = _load_image_from_bytes(fixed)
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid image")
 
-    encodings = face_recognition.face_encodings(image)
-    if not encodings:
+    app = get_face_app()
+    faces = app.get(image)
+    if not faces:
         raise HTTPException(status_code=400, detail="No face detected")
 
-    encoding = encodings[0]
+    encoding = faces[0].embedding
+    threshold = 1.0 - tolerance
 
     matches = []
     encodings_db = db.query(FaceEncoding).options(selectinload(FaceEncoding.picture)).all()
     for encoding_db in encodings_db:
         encoding_decrypted = pickle.loads(cast(bytes, encoding_db.encoding))
-        match = face_recognition.compare_faces([encoding_decrypted], encoding, tolerance=tolerance)
+        similarity = _cosine_similarity(encoding_decrypted, encoding)
 
-        if match[0]:
+        if similarity >= threshold:
             matches.append({
                 "filename": os.path.basename(encoding_db.picture.path) if encoding_db.picture else None,
             })
@@ -196,6 +212,7 @@ def syncPictures(db: Session, id: int, tolerance: float) -> dict:
     db.commit()
 
     person_encoding = pickle.loads(cast(bytes, person.encoding))
+    threshold = 1.0 - tolerance
 
     # Only consider encodings that are unassigned or assigned to this person with worse tolerance
     encodings = db.query(FaceEncoding).filter(
@@ -210,11 +227,9 @@ def syncPictures(db: Session, id: int, tolerance: float) -> dict:
             continue
 
         encoding = pickle.loads(cast(bytes, db_encoding.encoding))
-        match = face_recognition.compare_faces(
-            [person_encoding], encoding, tolerance=tolerance
-        )[0]
+        similarity = _cosine_similarity(person_encoding, encoding)
 
-        if match:
+        if similarity >= threshold:
             db_encoding.person_id = id
             db_encoding.tolerance = tolerance
             updated += 1

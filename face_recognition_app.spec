@@ -7,15 +7,12 @@ block_cipher = None
 
 # Collect data files from packages that need them
 datas = []
-datas += collect_data_files('face_recognition_models')
-datas += collect_data_files('face_recognition')
-datas += collect_data_files('faiss')
-datas += collect_data_files('dlib')
+datas += collect_data_files('insightface')
+datas += collect_data_files('onnxruntime')
 
 # Collect native shared libraries
 binaries = []
-binaries += collect_dynamic_libs('faiss')
-binaries += collect_dynamic_libs('dlib')
+binaries += collect_dynamic_libs('onnxruntime')
 
 a = Analysis(
     ['run.py'],
@@ -45,12 +42,10 @@ a = Analysis(
         # Pydantic
         'pydantic',
         'pydantic.deprecated.decorator',
-        # face_recognition / dlib
-        'face_recognition',
-        'face_recognition_models',
-        'dlib',
-        # faiss
-        'faiss',
+        # insightface / onnxruntime
+        'insightface',
+        'onnxruntime',
+        'cv2',
         # numpy
         'numpy',
         'PIL',
