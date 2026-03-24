@@ -8,8 +8,10 @@ _app = None
 
 def _models_root() -> str:
     if getattr(sys, 'frozen', False):
-        return os.path.dirname(sys.executable)
-    return os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        base = os.path.dirname(sys.executable)
+    else:
+        base = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    return os.path.join(base, 'ai_models')
 
 
 def get_face_app() -> FaceAnalysis:

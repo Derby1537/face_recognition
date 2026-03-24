@@ -25,6 +25,9 @@ public/
 # Docker export
 *.tar.gz
 
+# InsightFace models (large binary files, copy manually)
+/ai_models/
+
 # misc
 archive/
 benchmark.txt
