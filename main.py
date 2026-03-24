@@ -4,6 +4,7 @@ from fastapi import FastAPI
 from routers import people_router, pictures_router, stats_router
 from dotenv import load_dotenv
 from db.db import init_db
+from core.face_engine import get_face_app
 
 load_dotenv()
 
@@ -13,6 +14,7 @@ is_production = os.getenv("ENV") == "production"
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
+    get_face_app()
     yield
 
 
