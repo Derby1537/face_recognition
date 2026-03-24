@@ -13,7 +13,7 @@ datas += collect_data_files('onnxruntime')
 # include the insightface models from the project directory
 _models_dir = os.path.join(os.path.dirname(os.path.abspath(SPEC)), 'ai_models')
 if os.path.isdir(_models_dir):
-    datas += [(_models_dir, 'models')]
+    datas += [(_models_dir, 'ai_models')]
 
 # Collect native shared libraries
 binaries = []
