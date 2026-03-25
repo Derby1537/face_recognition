@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session, selectinload
 from core.face_engine import get_face_app
 from models.Face_Encodings import FaceEncoding
 from models.Person import Person
+from models.Picture import Picture
 from schemas.person import PersonWithPictures
 from schemas.picture import PictureWithTolerance
 
@@ -137,7 +138,7 @@ async def postPerson(db: Session, file: UploadFile, name: str, sync: bool = Fals
     return {"message": f"Person {name} created successfully"}
 
 
-async def recognizePerson(db: Session, file: UploadFile, tolerance: float = 0.5) -> dict:
+async def recognizePerson(db: Session, file: UploadFile, tolerance: float = 0.5, match_all: bool = False) -> dict:
     contents = await file.read()
     ext = os.path.splitext(file.filename or "")[-1].lower()
     fixed = bytes([0xFF, 0xD8, 0xFF]) + contents[3:] if ext in (".jpg", ".jpeg") else contents
@@ -152,21 +153,45 @@ async def recognizePerson(db: Session, file: UploadFile, tolerance: float = 0.5)
     if not faces:
         raise HTTPException(status_code=400, detail="No face detected")
 
-    encoding = faces[0].embedding
+    query_embeddings = [face.embedding for face in faces]
     threshold = 1.0 - tolerance
 
-    matches = []
-    encodings_db = db.query(FaceEncoding).options(selectinload(FaceEncoding.picture)).all()
-    for encoding_db in encodings_db:
-        encoding_decrypted = pickle.loads(cast(bytes, encoding_db.encoding))
-        similarity = _cosine_similarity(encoding_decrypted, encoding)
+    encodings_db = (
+        db.query(FaceEncoding)
+        .options(selectinload(FaceEncoding.picture))
+        .filter(FaceEncoding.picture_id.isnot(None))
+        .all()
+    )
 
-        if similarity >= threshold:
-            matches.append({
-                "filename": os.path.basename(encoding_db.picture.path) if encoding_db.picture else None,
-            })
+    # For each face in the input, collect the set of picture_ids that contain a matching face
+    picture_sets: list[set[int]] = []
+    for query_embedding in query_embeddings:
+        matched: set[int] = set()
+        for enc in encodings_db:
+            enc_embedding = pickle.loads(cast(bytes, enc.encoding))
+            if _cosine_similarity(enc_embedding, query_embedding) >= threshold:
+                matched.add(cast(int, enc.picture_id))
+        picture_sets.append(matched)
 
-    return {"matches": matches}
+    if not picture_sets:
+        return {"matches": []}
+
+    if match_all:
+        result_ids = picture_sets[0]
+        for s in picture_sets[1:]:
+            result_ids = result_ids & s
+    else:
+        result_ids: set[int] = set()
+        for s in picture_sets:
+            result_ids = result_ids | s
+
+    pictures = db.query(Picture).filter(Picture.id.in_(result_ids)).all()
+    return {
+        "matches": [
+            {"picture_id": cast(int, pic.id), "filename": os.path.basename(cast(str, pic.path))}
+            for pic in pictures
+        ]
+    }
 
 
 def unlinkEncoding(db: Session, person_id: int, encoding_id: int) -> dict:

@@ -60,8 +60,9 @@ async def deletePerson(id: int, db: Session = Depends(get_db)):
 async def recognizePerson(
     file: UploadFile = File(...),
     tolerance: float = 0.5,
+    match_all: bool = False,
     db: Session = Depends(get_db)
 ):
-    return await people_controller.recognizePerson(db, file, tolerance)
+    return await people_controller.recognizePerson(db, file, tolerance, match_all)
 
 
