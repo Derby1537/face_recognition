@@ -194,6 +194,112 @@ async def recognizePerson(db: Session, file: UploadFile, tolerance: float = 0.5,
     }
 
 
+async def recursiveRecognizePeople(db: Session, file: UploadFile, tolerance: float = 0.5, depth: int = 1) -> dict:
+    MAX_DEPTH = 2
+    depth = min(depth, MAX_DEPTH)
+
+    contents = await file.read()
+    ext = os.path.splitext(file.filename or "")[-1].lower()
+    fixed = bytes([0xFF, 0xD8, 0xFF]) + contents[3:] if ext in (".jpg", ".jpeg") else contents
+
+    try:
+        image = _load_image_from_bytes(fixed)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid image")
+
+    app = get_face_app()
+    faces = app.get(image)
+    if not faces:
+        raise HTTPException(status_code=400, detail="No face detected")
+
+    threshold = 1.0 - tolerance
+
+    # Pre-decode all DB encodings once
+    all_encodings_raw = (
+        db.query(FaceEncoding)
+        .filter(FaceEncoding.picture_id.isnot(None))
+        .all()
+    )
+    decoded: list[tuple[int, np.ndarray]] = [
+        (cast(int, enc.picture_id), pickle.loads(cast(bytes, enc.encoding)))
+        for enc in all_encodings_raw
+    ]
+
+    # Group by picture_id for fast lookup of "who else is in this picture"
+    by_picture: dict[int, list[np.ndarray]] = {}
+    for pic_id, emb in decoded:
+        by_picture.setdefault(pic_id, []).append(emb)
+
+    # Each cluster = one discovered person: representative embedding + matched picture_ids
+    clusters: list[dict] = []
+
+    def find_cluster(emb: np.ndarray) -> int:
+        for i, c in enumerate(clusters):
+            if _cosine_similarity(c["representative"], emb) >= threshold:
+                return i
+        return -1
+
+    def get_or_add_cluster(emb: np.ndarray) -> int:
+        idx = find_cluster(emb)
+        if idx != -1:
+            return idx
+        clusters.append({"representative": emb, "picture_ids": set()})
+        return len(clusters) - 1
+
+    def find_pictures_for_cluster(cluster_idx: int):
+        rep = clusters[cluster_idx]["representative"]
+        for pic_id, emb in decoded:
+            if _cosine_similarity(rep, emb) >= threshold:
+                clusters[cluster_idx]["picture_ids"].add(pic_id)
+
+    # Seed: all faces detected in the input image
+    for face in faces:
+        get_or_add_cluster(face.embedding)
+
+    expanded: set[int] = set()
+    current_level = set(range(len(clusters)))
+
+    for _ in range(depth):
+        # Expand all clusters at this level
+        for idx in current_level:
+            if idx not in expanded:
+                find_pictures_for_cluster(idx)
+                expanded.add(idx)
+
+        # Discover new persons from the pictures found at this level
+        next_level: set[int] = set()
+        for idx in current_level:
+            for pic_id in clusters[idx]["picture_ids"]:
+                for emb in by_picture.get(pic_id, []):
+                    new_idx = get_or_add_cluster(emb)
+                    if new_idx not in expanded:
+                        next_level.add(new_idx)
+
+        current_level = next_level
+        if not current_level:
+            break
+
+    # Fetch all involved pictures from DB
+    all_pic_ids: set[int] = set()
+    for c in clusters:
+        all_pic_ids.update(c["picture_ids"])
+
+    pictures_map: dict[int, str] = {}
+    if all_pic_ids:
+        pics = db.query(Picture).filter(Picture.id.in_(all_pic_ids)).all()
+        pictures_map = {cast(int, p.id): os.path.basename(cast(str, p.path)) for p in pics}
+
+    return {
+        "matches": {
+            "people": {
+                f"person_{i}": [pictures_map[pid] for pid in c["picture_ids"] if pid in pictures_map]
+                for i, c in enumerate(clusters)
+            }
+        }
+    }
+
+
+
 def unlinkEncoding(db: Session, person_id: int, encoding_id: int) -> dict:
     encoding = db.query(FaceEncoding).filter(
         FaceEncoding.id == encoding_id,
