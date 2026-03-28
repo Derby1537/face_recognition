@@ -259,7 +259,7 @@ async def recursiveRecognizePeople(db: Session, file: UploadFile, tolerance: flo
     expanded: set[int] = set()
     current_level = set(range(len(clusters)))
 
-    for _ in range(depth):
+    for _ in range(depth + 1):
         # Expand all clusters at this level
         for idx in current_level:
             if idx not in expanded:
