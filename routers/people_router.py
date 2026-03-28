@@ -56,16 +56,6 @@ async def deletePerson(id: int, db: Session = Depends(get_db)):
     return people_controller.deletePerson(db, id)
 
 
-@router.post("/recursive-recognize")
-async def recursiveRecognizePeople(
-    file: UploadFile = File(...),
-    tolerance: float = 0.5,
-    depth: int = 1,
-    db: Session = Depends(get_db)
-):
-    return await people_controller.recursiveRecognizePeople(db, file, tolerance, depth)
-
-
 @router.post("/recognize")
 async def recognizePerson(
     file: UploadFile = File(...),
@@ -79,10 +69,8 @@ async def recognizePerson(
 @router.post("/recursive-recognize")
 async def recursiveRecognizePeople(
     file: UploadFile = File(...),
-    depth: int = 1,
     tolerance: float = 0.5,
+    depth: int = 1,
     db: Session = Depends(get_db)
 ):
     return await people_controller.recursiveRecognizePeople(db, file, tolerance, depth)
-
-
